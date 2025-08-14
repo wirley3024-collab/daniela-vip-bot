@@ -503,17 +503,19 @@ if __name__ == "__main__":
         bot.remove_webhook()
     except Exception:
         pass
+
     bot.set_webhook(
         url=f"{PUBLIC_BASE_URL}{TELEGRAM_WEBHOOK_PATH}",
         allowed_updates=telebot.util.update_types,
         drop_pending_updates=True
     )
 
-threading.Thread(target=daily_pruner, daemon=True).start()
+    threading.Thread(target=daily_pruner, daemon=True).start()
 
-import threading
-# Inicia Flask em paralelo para abrir a porta no Render
-threading.Thread(target=run_flask).start()
+    # Inicia Flask diretamente no processo principal
+    port = int(os.getenv("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
+
 
 
 
