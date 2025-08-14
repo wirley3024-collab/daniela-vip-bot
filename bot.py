@@ -529,11 +529,14 @@ def start_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    # Inicia Flask primeiro para o Render detectar a porta
-    threading.Thread(target=start_flask, daemon=True).start()
-
-    # Inicia o bot
+    # Inicia o bot em segundo plano
     threading.Thread(target=start_bot, daemon=True).start()
+
+    # Inicia o Flask no processo principal (necessário para o Render detectar)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
+    app.run(host="0.0.0.0", port=port)
+
 
 
 
