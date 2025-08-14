@@ -21,6 +21,7 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 PRICE_ID = os.getenv("PRICE_ID")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")         # ex: https://daniela-vip-bot.onrender.com
 BOT_USERNAME = os.getenv("BOT_USERNAME")               # ex: DanielaVip_OfficialBot
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))   # opcional (para receber erros)
 
 missing = []
 if not TELEGRAM_TOKEN: missing.append("TELEGRAM_TOKEN")
@@ -206,35 +207,35 @@ def cb_ver_muestras(call):
 
 @bot.callback_query_handler(func=lambda c: c.data == "suscribir")
 def cb_suscribir(call):
+    """Cria sessão de checkout Stripe e envia link ao usuário."""
     bot.answer_callback_query(call.id)
-try:
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        line_items=[{"price": PRICE_ID, "quantity": 1}],
-        success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
-        cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
-        client_reference_id=str(call.from_user.id),
-        customer_creation="always",
-        metadata={
-            "telegram_user_id": str(call.from_user.id),
-            "telegram_username": call.from_user.username or ""
-        }
-    )
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": PRICE_ID, "quantity": 1}],
+            success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
+            cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
+            client_reference_id=str(call.from_user.id),
+            customer_creation="always",
+            metadata={
+                "telegram_user_id": str(call.from_user.id),
+                "telegram_username": call.from_user.username or ""
+            }
+        )
+        bot.send_message(
+            call.message.chat.id,
+            f"📸 Para completar tu suscripción, haz clic aquí:\n{session.url}\n\n"
+            "Tras el pago, recibirás acceso automáticamente. ✨",
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        # Se falhar, tenta avisar no próprio chat. Se não der, usa ADMIN_CHAT_ID (se definido)
+        target = getattr(call, "message", None)
+        target_chat_id = getattr(target, "chat", None).id if target else (ADMIN_CHAT_ID or None)
+        if target_chat_id:
+            bot.send_message(target_chat_id, f"⚠️ Error creando el pago: {str(e)}")
+        print("[cb_suscribir] erro criando checkout:", e)
 
-    bot.send_message(
-        call.message.chat.id,
-        f"📸 Para completar tu suscripción, haz clic aquí:\n{session.url}\n\n"
-        "Tras el pago, recibirás acceso automáticamente. ✨",
-        disable_web_page_preview=True
-    )
-
-except Exception as e:
-    bot.send_message(
-        call.message.chat.id if 'call' in locals() else ADMIN_CHAT_ID,
-        f"⚠️ Error creando el pago: {str(e)}"
-    )
-
-    
 @bot.message_handler(func=lambda m: True)
 def any_text(message):
     text = (message.text or "").lower()
@@ -244,7 +245,12 @@ def any_text(message):
             bot.send_photo(message.chat.id, fid)
         bot.send_message(message.chat.id, MUESTRAS_FOOTER, reply_markup=kb_post_muestras())
     elif any(w in text for w in ["pago", "link", "enlace", "suscribir", "comprar", "pagar"]):
-        fake_call = type("obj", (), {"id": "0", "from_user": message.from_user, "message": message})
+        # Simula um callback para reutilizar a mesma lógica de compra
+        Fake = type("Fake", (), {})
+        fake_call = Fake()
+        fake_call.id = "0"
+        fake_call.from_user = message.from_user
+        fake_call.message = message
         cb_suscribir(fake_call)
     else:
         bot.send_message(message.chat.id, FALLBACK, reply_markup=kb_inicio())
@@ -288,7 +294,8 @@ def stripe_webhook():
             sub = stripe.Subscription.retrieve(sub_id) if sub_id else None
             period_end = sub["current_period_end"] if sub else int(time.time()) + 30*24*3600
             status = sub["status"] if sub else "active"
-        except Exception:
+        except Exception as e:
+            print("[webhook] erro recuperando subscription:", e)
             period_end = int(time.time()) + 30*24*3600
             status = "active"
 
@@ -307,7 +314,8 @@ def stripe_webhook():
             try:
                 sub = stripe.Subscription.retrieve(sub_id)
                 db_set_status_by_sub(sub_id, sub["status"], sub["current_period_end"])
-            except Exception:
+            except Exception as e:
+                print("[webhook] erro ao atualizar status pós-sucesso:", e)
                 db_set_status_by_sub(sub_id, "active")
 
     elif etype == "invoice.payment_failed":
@@ -374,6 +382,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
 
