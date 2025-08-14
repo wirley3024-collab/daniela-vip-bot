@@ -201,10 +201,9 @@ def cb_ver_muestras(call):
     bot.answer_callback_query(call.id)
     chat_id = call.message.chat.id
     bot.send_message(chat_id, MUESTRAS_HEADER)
-          for fid in PHOTOS:
+    for fid in PHOTOS:
         bot.send_photo(chat_id, fid)
     bot.send_message(chat_id, MUESTRAS_FOOTER, reply_markup=kb_inicio(chat_id))
-
 
 
 def kb_inicio(chat_id):
@@ -399,6 +398,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
 
