@@ -488,17 +488,10 @@ def create_checkout_session():
         return jsonify(error=str(e)), 400
 
 
-# ===============================
 # MAIN
-# ===============================
-def run_flask():
-    port = int(os.getenv("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
-
 if __name__ == "__main__":
     db_init()
 
-    # Configura o webhook do Telegram (sem polling!)
     try:
         bot.remove_webhook()
     except Exception:
@@ -512,9 +505,15 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
 
-    # Inicia Flask diretamente no processo principal
+    # Inicia Flask diretamente no processo principal (Render exige isso)
     port = int(os.getenv("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
+
+
+
+
+
+
 
 
 
