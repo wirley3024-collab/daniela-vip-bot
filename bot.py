@@ -195,13 +195,19 @@ def kb_inicio(chat_id: int):
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("🆓 Ver fotos gratis", callback_data="ver_muestras"))
     checkout_url = make_checkout_session(chat_id)
-    kb.add(InlineKeyboardButton("💳 Suscribirme ahora", url=checkout_url))
+    if checkout_url:
+        kb.add(InlineKeyboardButton("💳 Suscribirme ahora", url=checkout_url))
+    else:
+        kb.add(InlineKeyboardButton("❌ Error creando pago", callback_data="error_pago"))
     return kb
 
 def kb_post_muestras(chat_id: int):
     kb = InlineKeyboardMarkup()
     checkout_url = make_checkout_session(chat_id)
-    kb.add(InlineKeyboardButton("✅ Quiero suscribirme", url=checkout_url))
+    if checkout_url:
+        kb.add(InlineKeyboardButton("✅ Quiero suscribirme", url=checkout_url))
+    else:
+        kb.add(InlineKeyboardButton("❌ Error creando pago", callback_data="error_pago"))
     kb.add(InlineKeyboardButton("🔁 Ver de nuevo", callback_data="ver_muestras"))
     return kb
 
@@ -212,6 +218,17 @@ def kb_post_muestras(chat_id: int):
 def cmd_start(message):
     bot.send_message(message.chat.id, INTRO_1, reply_markup=kb_inicio(message.chat.id))
     bot.send_message(message.chat.id, INTRO_2)
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "error_pago")
+def cb_error_pago(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        call.message.chat.id,
+        "⚠️ Lo siento, ocurrió un error creando tu pago.\n"
+        "Por favor, intenta de nuevo más tarde o contacta soporte."
+    )
+
 
 @bot.callback_query_handler(func=lambda c: c.data == "ver_muestras")
 def cb_ver_muestras(call):
@@ -381,7 +398,6 @@ if __name__ == "__main__":
     port = int(os.environ["PORT"])
     print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
     app.run(host="0.0.0.0", port=port)
-
 
 
 
