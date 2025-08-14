@@ -465,26 +465,28 @@ def pagina_sucesso():
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
-checkout_session = stripe.checkout.Session.create(
-    payment_method_types=["card"],
-    line_items=[{
-        "price_data": {
-            "currency": "brl",
-            "product_data": {
-                "name": "Acesso VIP"
-            },
-            "unit_amount": 1000,  # valor em centavos
-        },
-        "quantity": 1
-    }],
-    mode="payment",
-    success_url="https://daniela-vip-bot.onrender.com/sucesso",
-    cancel_url="https://daniela-vip-bot.onrender.com/cancelado"
-)
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",  # moeda em euro
+                    "product_data": {
+                        "name": "Acesso VIP"
+                    },
+                    "unit_amount": 1999,  # €19,99 (em centavos)
+                },
+                "quantity": 1
+            }],
+            mode="payment",
+            success_url="https://daniela-vip-bot.onrender.com/sucesso",
+            cancel_url="https://daniela-vip-bot.onrender.com/cancelado"
+        )
 
         return jsonify({"url": checkout_session.url})
+
     except Exception as e:
         return jsonify(error=str(e)), 400
+
 
 
 # ================================
@@ -517,6 +519,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
 
