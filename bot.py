@@ -489,22 +489,12 @@ def create_checkout_session():
 
 
 # MAIN
-import sys
 
-# MAIN
 import threading
 import sys
 import os
 
-def start_flask():
-    port = int(os.getenv("PORT", "10000"))
-    print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
-    app.run(host="0.0.0.0", port=port)
-
-if __name__ == "__main__":
-    # Inicia o Flask primeiro, para o Render detectar
-    threading.Thread(target=start_flask, daemon=True).start()
-
+def start_bot():
     print("[INIT] Iniciando aplicação...", file=sys.stdout)
 
     try:
@@ -531,6 +521,18 @@ if __name__ == "__main__":
 
     print("[THREAD] Iniciando limpeza diária...", file=sys.stdout)
     threading.Thread(target=daily_pruner, daemon=True).start()
+    print("[THREAD] Thread iniciada!", file=sys.stdout)
+
+
+if __name__ == "__main__":
+    # Inicia o bot em uma thread separada
+    threading.Thread(target=start_bot, daemon=True).start()
+
+    # Sobe o Flask no processo principal para Render detectar
+    port = int(os.getenv("PORT", "10000"))
+    print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
+    app.run(host="0.0.0.0", port=port)
+
 
 
 
