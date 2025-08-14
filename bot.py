@@ -1,5 +1,6 @@
 # bot.py
 import os
+import sys
 import time
 import sqlite3
 import threading
@@ -18,8 +19,8 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))   # ex: -1001234567890
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-PRICE_ID = os.getenv("PRICE_ID")
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")         # ex: https://daniela-vip-bot.onrender.com
+PRICE_ID = os.getenv("PRICE_ID")                       # ex: price_...
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")         # ex: https://seu-servico.onrender.com
 BOT_USERNAME = os.getenv("BOT_USERNAME")               # ex: DanielaVip_OfficialBot
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))   # opcional (para receber erros)
 
@@ -114,10 +115,10 @@ def tg_call(method, payload):
     try:
         r = requests.post(f"{API_BASE}/{method}", json=payload, timeout=15)
         if not r.ok:
-            print("Telegram API error:", r.text)
+            print("Telegram API error:", r.text, file=sys.stdout)
         return r.json()
     except Exception as e:
-        print("Telegram call exception:", e)
+        print("Telegram call exception:", e, file=sys.stdout)
         return {"ok": False, "error": str(e)}
 
 def send_dm(user_id, text, buttons=None):
@@ -142,18 +143,6 @@ def kick_from_group(user_id: int):
 # ===============================
 # UI / Textos
 # ===============================
-def kb_inicio():
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("🆓 Ver fotos gratis", callback_data="ver_muestras"))
-    kb.add(InlineKeyboardButton("💳 Suscribirme ahora", callback_data="suscribir"))
-    return kb
-
-def kb_post_muestras():
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("✅ Quiero suscribirme", callback_data="suscribir"))
-    kb.add(InlineKeyboardButton("🔁 Ver de nuevo", callback_data="ver_muestras"))
-    return kb
-
 INTRO_1 = (
     "Hola, cariño 😘\n"
     "Soy *Daniela* y aquí comparto mi contenido más *exclusivo*.\n"
@@ -188,8 +177,43 @@ PHOTOS = [
     "AgACAgEAAxkBAAMGaJ0EcS8jOgn1wLFvy56_BAuR0jkAAu2wMRv6TehE4NhOjH31DScBAAMCAAN4AAM2BA"
 ]
 
+def make_checkout_session(chat_id: int) -> str:
+    """
+    Cria uma sessão de checkout Stripe (subscription) e retorna a URL.
+    """
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": PRICE_ID, "quantity": 1}],
+            success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
+            cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
+            client_reference_id=str(chat_id),
+            customer_creation="always",
+            metadata={"telegram_user_id": str(chat_id)},
+        )
+        return session.url
+    except Exception as e:
+        print("[checkout] erro criando checkout:", e, file=sys.stdout)
+        # fallback: link do bot
+        return f"https://t.me/{BOT_USERNAME}"
+
+def kb_inicio(chat_id: int):
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🆓 Ver fotos gratis", callback_data="ver_muestras"))
+    # botão com URL direto (evita precisar de callback 'suscribir')
+    checkout_url = make_checkout_session(chat_id)
+    kb.add(InlineKeyboardButton("💳 Suscribirme ahora", url=checkout_url))
+    return kb
+
+def kb_post_muestras(chat_id: int):
+    kb = InlineKeyboardMarkup()
+    checkout_url = make_checkout_session(chat_id)
+    kb.add(InlineKeyboardButton("✅ Quiero suscribirme", url=checkout_url))
+    kb.add(InlineKeyboardButton("🔁 Ver de nuevo", callback_data="ver_muestras"))
+    return kb
+
 # ===============================
-# BOT handlers (funciona igual em webhook)
+# BOT handlers (webhook)
 # ===============================
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
@@ -203,76 +227,10 @@ def cb_ver_muestras(call):
     bot.send_message(chat_id, MUESTRAS_HEADER)
     for fid in PHOTOS:
         bot.send_photo(chat_id, fid)
-    bot.send_message(chat_id, MUESTRAS_FOOTER, reply_markup=kb_inicio(chat_id))
-
-
-def kb_inicio(chat_id):
-    try:
-        session = stripe.checkout.Session.create(
-            mode="subscription",
-            line_items=[{"price": "price_1RtsdwP098mBpr1rM5a9A9eH", "quantity": 1}],
-            success_url="https://t.me/DanielaVip_OfficialBot?start=paid",
-            cancel_url="https://t.me/DanielaVip_OfficialBot?start=cancel",
-            client_reference_id=str(chat_id),
-            customer_creation="always",
-            metadata={
-                "telegram_user_id": str(chat_id)
-            }
-        )
-        checkout_url = session.url
-    except Exception as e:
-        print("[kb_inicio] erro criando checkout:", e)
-        checkout_url = "https://t.me/DanielaVip_OfficialBot"
-
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("📷 Ver fotos gratis", callback_data="ver_muestras"))
-    kb.add(InlineKeyboardButton("💳 Suscribirme ahora", url=checkout_url))
-    return kb
-
-def kb_post_muestras(chat_id):
-    try:
-        # Cria a sessão de checkout diretamente
-        session = stripe.checkout.Session.create(
-            mode="subscription",
-            line_items=[{"price": PRICE_ID, "quantity": 1}],
-            success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
-            cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
-            client_reference_id=str(chat_id),
-            customer_creation="always",
-            metadata={
-                "telegram_user_id": str(chat_id)
-            }
-        )
-
-        checkout_url = session.url
-
-    except Exception as e:
-        print("[kb_post_muestras] erro criando checkout:", e)
-        checkout_url = "https://seu-link-de-falha-aqui.com"
-
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("✅ Quiero suscribirme", url=checkout_url))
-    kb.add(InlineKeyboardButton("🔄 Ver de nuevo", callback_data="ver_muestras"))
-    return kb
-
-    if any(w in text for w in ["gratis", "muestra", "fotos", "free", "muestras"]):
-        bot.send_message(message.chat.id, MUESTRAS_HEADER)
-        for fid in PHOTOS:
-            bot.send_photo(message.chat.id, fid)
-        bot.send_message(message.chat.id, MUESTRAS_FOOTER, reply_markup=kb_post_muestras())
-    elif any(w in text for w in ["pago", "link", "enlace", "suscribir", "comprar", "pagar"]):
-        # Simula um callback para reutilizar a mesma lógica de compra
-        Fake = type("Fake", (), {})
-        fake_call = Fake()
-        fake_call.id = "0"
-        fake_call.from_user = message.from_user
-        fake_call.message = message
-        cb_suscribir(fake_call)
-    else:
-        bot.send_message(message.chat.id, FALLBACK, reply_markup=kb_inicio())
+    bot.send_message(chat_id, MUESTRAS_FOOTER, reply_markup=kb_post_muestras(chat_id))
 
 # ===============================
-# FLASK (Telegram Webhook + Stripe Webhook + Health)
+# FLASK (Telegram Webhook + Stripe Webhook + Health + Páginas)
 # ===============================
 @app.get("/")
 def health():
@@ -285,10 +243,10 @@ def telegram_webhook():
         update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
         bot.process_new_updates([update])
     except Exception as e:
-        print("Erro no telegram_webhook:", e)
+        print("Erro no telegram_webhook:", e, file=sys.stdout)
     return "OK", 200
 
-# Stripe → você já cadastrou /webhook na Stripe
+# Stripe → /webhook (configure esta URL no Dashboard da Stripe)
 @app.post("/webhook")
 def stripe_webhook():
     payload = request.data
@@ -311,7 +269,7 @@ def stripe_webhook():
             period_end = sub["current_period_end"] if sub else int(time.time()) + 30*24*3600
             status = sub["status"] if sub else "active"
         except Exception as e:
-            print("[webhook] erro recuperando subscription:", e)
+            print("[webhook] erro recuperando subscription:", e, file=sys.stdout)
             period_end = int(time.time()) + 30*24*3600
             status = "active"
 
@@ -331,7 +289,7 @@ def stripe_webhook():
                 sub = stripe.Subscription.retrieve(sub_id)
                 db_set_status_by_sub(sub_id, sub["status"], sub["current_period_end"])
             except Exception as e:
-                print("[webhook] erro ao atualizar status pós-sucesso:", e)
+                print("[webhook] erro ao atualizar status pós-sucesso:", e, file=sys.stdout)
                 db_set_status_by_sub(sub_id, "active")
 
     elif etype == "invoice.payment_failed":
@@ -358,6 +316,44 @@ def stripe_webhook():
 
     return jsonify({"received": True}), 200
 
+# Página simples de sucesso (opcional)
+@app.get("/sucesso")
+def pagina_sucesso():
+    return """
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Pagamento Confirmado</title>
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f7f7f7; }
+          .container { background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+          h1 { color: #2ecc71; }
+          a.botao { background-color: #2ecc71; color: white; padding: 15px 25px; text-decoration: none; border-radius: 5px; font-size: 18px; display: inline-block; margin-top: 20px; }
+          a.botao:hover { background-color: #27ae60; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>✅ Pagamento Confirmado!</h1>
+          <p>Bem-vindo ao nosso grupo VIP no Telegram!</p>
+          <a href="https://t.me/{bot}" class="botao">Abrir o Bot</a>
+        </div>
+      </body>
+    </html>
+    """.format(bot=BOT_USERNAME)
+
+# Endpoint opcional para criar checkout por POST (ex.: do seu site)
+@app.post("/create-checkout-session")
+def create_checkout_session():
+    try:
+        data = request.get_json(silent=True) or {}
+        # se enviar chat_id no body, usamos; se não, devolvemos apenas um link genérico para o bot
+        chat_id = int(data.get("chat_id", 0))
+        url = make_checkout_session(chat_id) if chat_id else f"https://t.me/{BOT_USERNAME}"
+        return jsonify({"url": url})
+    except Exception as e:
+        return jsonify(error=str(e)), 400
+
 # ===============================
 # tarefa diária (backup)
 # ===============================
@@ -368,135 +364,18 @@ def daily_pruner():
             for uid in db_get_all_expired(now):
                 try:
                     kick_from_group(uid)
-                    print(f"[PRUNER] expulsado por expiración: {uid}")
+                    print(f"[PRUNER] expulsado por expiración: {uid}", file=sys.stdout)
                 except Exception as e:
-                    print(f"[PRUNER] error expulsando {uid}: {e}")
+                    print(f"[PRUNER] error expulsando {uid}: {e}", file=sys.stdout)
         except Exception as e:
-            print("[PRUNER] error ciclo:", e)
+            print("[PRUNER] error ciclo:", e, file=sys.stdout)
         time.sleep(24 * 3600)
-...
-time.sleep(24 * 3600)
 
-# ======= ROTA WEBHOOK STRIPE =======
-from flask import Flask, request, jsonify
-import stripe
-import os
-
-app = Flask(__name__)
-
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-
-@app.route("/webhook", methods=["POST"])
-def stripe_webhook():
-    payload = request.data
-    sig_header = request.headers.get("Stripe-Signature")
-
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, WEBHOOK_SECRET
-        )
-    except ValueError:
-        return "Invalid payload", 400
-    except stripe.error.SignatureVerificationError:
-        return "Invalid signature", 400
-
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        chat_id = session.get("client_reference_id")
-        if chat_id:
-            bot.send_message(
-                chat_id,
-                "✅ Pagamento confirmado! Bem-vindo ao grupo VIP 🎉"
-            )
-            # Aqui você pode adicionar código para colocar o usuário no grupo
-
-# Rota para página de sucesso, exibindo link para o canal VIP
-@app.route("/sucesso")
-def pagina_sucesso():
-    return """
-    <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Pagamento Confirmado</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 50px;
-            background-color: #f7f7f7;
-          }
-          .container {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            display: inline-block;
-            box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
-          }
-          h1 {
-            color: #2ecc71;
-          }
-          a.botao {
-            background-color: #2ecc71;
-            color: white;
-            padding: 15px 25px;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 18px;
-            display: inline-block;
-            margin-top: 20px;
-          }
-          a.botao:hover {
-            background-color: #27ae60;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>✅ Pagamento Confirmado!</h1>
-          <p>Bem-vindo ao nosso grupo VIP no Telegram!</p>
-          <a href="https://t.me/+adrsnUuAlTJkNzIx" class="botao">Entrar no Canal VIP</a>
-        </div>
-      </body>
-    </html>
-    """
-
-
-@app.route("/create-checkout-session", methods=["POST"])
-def create_checkout_session():
-    try:
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
-                "price_data": {
-                    "currency": "eur",  # moeda em euro
-                    "product_data": {
-                        "name": "Acesso VIP"
-                    },
-                    "unit_amount": 1999,  # €19,99 (em centavos)
-                },
-                "quantity": 1
-            }],
-            mode="payment",
-            success_url="https://daniela-vip-bot.onrender.com/sucesso",
-            cancel_url="https://daniela-vip-bot.onrender.com/cancelado"
-        )
-
-        return jsonify({"url": checkout_session.url})
-
-    except Exception as e:
-        return jsonify(error=str(e)), 400
-
-
+# ===============================
 # MAIN
-
-import threading
-import sys
-import os
-
+# ===============================
 def start_bot():
     print("[INIT] Iniciando aplicação...", file=sys.stdout)
-
     try:
         print("[DB] Inicializando banco...", file=sys.stdout)
         db_init()
@@ -523,16 +402,11 @@ def start_bot():
     threading.Thread(target=daily_pruner, daemon=True).start()
     print("[THREAD] Thread iniciada!", file=sys.stdout)
 
-def start_flask():
-    port = int(os.environ.get("PORT", 5000))  # Render fornece via variável de ambiente
-    print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
-    app.run(host="0.0.0.0", port=port)
-
 if __name__ == "__main__":
-    # Inicia o bot em segundo plano
+    # Inicia o bot em segundo plano (configura e mantém o webhook no Telegram)
     threading.Thread(target=start_bot, daemon=True).start()
 
-    # Inicia o Flask no processo principal (necessário para o Render detectar)
+    # Inicia o Flask no processo principal (Render detecta a porta via env PORT)
     port = int(os.environ.get("PORT", 5000))
     print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
     app.run(host="0.0.0.0", port=port)
