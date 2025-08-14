@@ -208,7 +208,6 @@ def cb_ver_muestras(call):
 def cb_suscribir(call):
     bot.answer_callback_query(call.id)
 try:
-   try:
     session = stripe.checkout.Session.create(
         mode="subscription",
         line_items=[{"price": PRICE_ID, "quantity": 1}],
@@ -224,7 +223,7 @@ try:
 
     bot.send_message(
         call.message.chat.id,
-        f"📩 Para completar tu suscripción, haz clic aquí:\n{session.url}\n\n"
+        f"📸 Para completar tu suscripción, haz clic aquí:\n{session.url}\n\n"
         "Tras el pago, recibirás acceso automáticamente. ✨",
         disable_web_page_preview=True
     )
@@ -234,6 +233,8 @@ except Exception as e:
         call.message.chat.id if 'call' in locals() else ADMIN_CHAT_ID,
         f"⚠️ Error creando el pago: {str(e)}"
     )
+
+    
 @bot.message_handler(func=lambda m: True)
 def any_text(message):
     text = (message.text or "").lower()
@@ -373,6 +374,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
 
