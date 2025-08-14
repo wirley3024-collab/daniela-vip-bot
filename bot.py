@@ -224,7 +224,7 @@ try:
     bot.send_message(
         call.message.chat.id,
         f"💳 Para completar tu suscripción, haz clic aquí:\n{session.url}\n\n"
-        "Tras el pago, recibirás acceso automáticamente. ✨"
+        "Tras el pago, recibirás acceso automáticamente. ✨",
         disable_web_page_preview=True
     )
 
@@ -374,5 +374,6 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
