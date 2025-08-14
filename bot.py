@@ -489,25 +489,40 @@ def create_checkout_session():
 
 
 # MAIN
+import sys
+
+# MAIN
 if __name__ == "__main__":
+    print("[INIT] Iniciando aplicação...", file=sys.stdout)
+
+    print("[DB] Inicializando banco...", file=sys.stdout)
     db_init()
+    print("[DB] Banco inicializado com sucesso!", file=sys.stdout)
 
     try:
+        print("[BOT] Removendo webhook antigo...", file=sys.stdout)
         bot.remove_webhook()
-    except Exception:
-        pass
+        print("[BOT] Webhook antigo removido!", file=sys.stdout)
+    except Exception as e:
+        print(f"[BOT] Erro ao remover webhook: {e}", file=sys.stdout)
 
+    print("[BOT] Configurando novo webhook...", file=sys.stdout)
     bot.set_webhook(
         url=f"{PUBLIC_BASE_URL}{TELEGRAM_WEBHOOK_PATH}",
         allowed_updates=telebot.util.update_types,
         drop_pending_updates=True
     )
+    print("[BOT] Novo webhook configurado!", file=sys.stdout)
 
+    print("[THREAD] Iniciando thread de limpeza diária...", file=sys.stdout)
     threading.Thread(target=daily_pruner, daemon=True).start()
+    print("[THREAD] Thread iniciada!", file=sys.stdout)
 
-    # Inicia Flask diretamente no processo principal (Render exige isso)
+    print("[FLASK] Iniciando servidor Flask...", file=sys.stdout)
     port = int(os.getenv("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
+
+
 
 
 
