@@ -16,13 +16,13 @@ from flask import Flask, request, jsonify
 # CONFIG (via variáveis de ambiente)
 # ===============================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))   # ex: -1001234567890
+GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-PRICE_ID = os.getenv("PRICE_ID")                       # ex: price_...
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")         # ex: https://seu-servico.onrender.com
-BOT_USERNAME = os.getenv("BOT_USERNAME")               # ex: DanielaVip_OfficialBot
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))   # opcional (para receber erros)
+PRICE_ID = os.getenv("PRICE_ID")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
+BOT_USERNAME = os.getenv("BOT_USERNAME")
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 
 missing = []
 if not TELEGRAM_TOKEN: missing.append("TELEGRAM_TOKEN")
@@ -39,7 +39,6 @@ stripe.api_key = STRIPE_SECRET_KEY
 bot = telebot.TeleBot(TELEGRAM_TOKEN, parse_mode="Markdown")
 app = Flask(__name__)
 
-# endpoint do webhook do Telegram (caminho "secreto")
 TELEGRAM_WEBHOOK_PATH = f"/telegram/{TELEGRAM_TOKEN}"
 
 # ===============================
@@ -128,7 +127,6 @@ def send_dm(user_id, text, buttons=None):
     return tg_call("sendMessage", data)
 
 def create_one_use_invite() -> Optional[str]:
-    # link 1-uso com expiração de 24h
     expire = int(time.time()) + 24 * 3600
     res = tg_call("createChatInviteLink", {"chat_id": GROUP_CHAT_ID, "expire_date": expire, "member_limit": 1})
     if res.get("ok") and res["result"].get("invite_link"):
@@ -178,9 +176,6 @@ PHOTOS = [
 ]
 
 def make_checkout_session(chat_id: int) -> str:
-    """
-    Cria uma sessão de checkout Stripe (subscription) e retorna a URL.
-    """
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
@@ -194,13 +189,11 @@ def make_checkout_session(chat_id: int) -> str:
         return session.url
     except Exception as e:
         print("[checkout] erro criando checkout:", e, file=sys.stdout)
-        # fallback: link do bot
         return f"https://t.me/{BOT_USERNAME}"
 
 def kb_inicio(chat_id: int):
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("🆓 Ver fotos gratis", callback_data="ver_muestras"))
-    # botão com URL direto (evita precisar de callback 'suscribir')
     checkout_url = make_checkout_session(chat_id)
     kb.add(InlineKeyboardButton("💳 Suscribirme ahora", url=checkout_url))
     return kb
@@ -230,13 +223,12 @@ def cb_ver_muestras(call):
     bot.send_message(chat_id, MUESTRAS_FOOTER, reply_markup=kb_post_muestras(chat_id))
 
 # ===============================
-# FLASK (Telegram Webhook + Stripe Webhook + Health + Páginas)
+# FLASK endpoints
 # ===============================
 @app.get("/")
 def health():
     return "OK", 200
 
-# Telegram → envia updates para este endpoint
 @app.post(TELEGRAM_WEBHOOK_PATH)
 def telegram_webhook():
     try:
@@ -246,7 +238,6 @@ def telegram_webhook():
         print("Erro no telegram_webhook:", e, file=sys.stdout)
     return "OK", 200
 
-# Stripe → /webhook (configure esta URL no Dashboard da Stripe)
 @app.post("/webhook")
 def stripe_webhook():
     payload = request.data
@@ -316,38 +307,35 @@ def stripe_webhook():
 
     return jsonify({"received": True}), 200
 
-# Página simples de sucesso (opcional)
 @app.get("/sucesso")
 def pagina_sucesso():
-    return """
+    return f"""
     <html>
       <head>
         <meta charset="UTF-8">
         <title>Pagamento Confirmado</title>
         <style>
-          body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f7f7f7; }
-          .container { background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-          h1 { color: #2ecc71; }
-          a.botao { background-color: #2ecc71; color: white; padding: 15px 25px; text-decoration: none; border-radius: 5px; font-size: 18px; display: inline-block; margin-top: 20px; }
-          a.botao:hover { background-color: #27ae60; }
+          body {{ font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f7f7f7; }}
+          .container {{ background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }}
+          h1 {{ color: #2ecc71; }}
+          a.botao {{ background-color: #2ecc71; color: white; padding: 15px 25px; text-decoration: none; border-radius: 5px; font-size: 18px; display: inline-block; margin-top: 20px; }}
+          a.botao:hover {{ background-color: #27ae60; }}
         </style>
       </head>
       <body>
         <div class="container">
           <h1>✅ Pagamento Confirmado!</h1>
           <p>Bem-vindo ao nosso grupo VIP no Telegram!</p>
-          <a href="https://t.me/{bot}" class="botao">Abrir o Bot</a>
+          <a href="https://t.me/{BOT_USERNAME}" class="botao">Abrir o Bot</a>
         </div>
       </body>
     </html>
-    """.format(bot=BOT_USERNAME)
+    """
 
-# Endpoint opcional para criar checkout por POST (ex.: do seu site)
 @app.post("/create-checkout-session")
 def create_checkout_session():
     try:
         data = request.get_json(silent=True) or {}
-        # se enviar chat_id no body, usamos; se não, devolvemos apenas um link genérico para o bot
         chat_id = int(data.get("chat_id", 0))
         url = make_checkout_session(chat_id) if chat_id else f"https://t.me/{BOT_USERNAME}"
         return jsonify({"url": url})
@@ -355,7 +343,7 @@ def create_checkout_session():
         return jsonify(error=str(e)), 400
 
 # ===============================
-# tarefa diária (backup)
+# tarefa diária
 # ===============================
 def daily_pruner():
     while True:
@@ -376,40 +364,24 @@ def daily_pruner():
 # ===============================
 def start_bot():
     print("[INIT] Iniciando aplicação...", file=sys.stdout)
+    db_init()
     try:
-        print("[DB] Inicializando banco...", file=sys.stdout)
-        db_init()
-        print("[DB] Banco inicializado com sucesso!", file=sys.stdout)
-    except Exception as e:
-        print(f"[DB] Erro: {e}", file=sys.stdout)
-
-    try:
-        print("[BOT] Removendo webhook antigo...", file=sys.stdout)
         bot.remove_webhook()
-        print("[BOT] Webhook antigo removido!", file=sys.stdout)
-    except Exception as e:
-        print(f"[BOT] Erro ao remover webhook: {e}", file=sys.stdout)
-
-    print("[BOT] Configurando novo webhook...", file=sys.stdout)
+    except Exception:
+        pass
     bot.set_webhook(
         url=f"{PUBLIC_BASE_URL}{TELEGRAM_WEBHOOK_PATH}",
         allowed_updates=telebot.util.update_types,
         drop_pending_updates=True
     )
-    print("[BOT] Novo webhook configurado!", file=sys.stdout)
-
-    print("[THREAD] Iniciando limpeza diária...", file=sys.stdout)
     threading.Thread(target=daily_pruner, daemon=True).start()
-    print("[THREAD] Thread iniciada!", file=sys.stdout)
 
 if __name__ == "__main__":
-    # Inicia o bot em segundo plano (configura e mantém o webhook no Telegram)
-    threading.Thread(target=start_bot, daemon=True).start()
-
-    # Inicia o Flask no processo principal (Render detecta a porta via env PORT)
-    port = int(os.environ.get("PORT", 5000))
+    start_bot()
+    port = int(os.environ["PORT"])
     print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
     app.run(host="0.0.0.0", port=port)
+
 
 
 
