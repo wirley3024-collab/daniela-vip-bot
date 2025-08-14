@@ -188,8 +188,11 @@ def make_checkout_session(chat_id: int) -> str:
         )
         return session.url
     except Exception as e:
-        print("[checkout] erro criando checkout:", e, file=sys.stdout)
-        return f"https://t.me/{BOT_USERNAME}"
+        import traceback
+        print("[checkout] ERRO criando checkout Stripe:", repr(e), file=sys.stdout)
+        traceback.print_exc()
+        return None
+
 
 def kb_inicio(chat_id: int):
     kb = InlineKeyboardMarkup()
@@ -398,34 +401,4 @@ if __name__ == "__main__":
     port = int(os.environ["PORT"])
     print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
     app.run(host="0.0.0.0", port=port)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
