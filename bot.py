@@ -177,21 +177,31 @@ PHOTOS = [
 
 def make_checkout_session(chat_id: int) -> str:
     try:
-        session = stripe.checkout.Session.create(
-            mode="subscription",
-            line_items=[{"price": PRICE_ID, "quantity": 1}],
-            success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
-            cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
-            client_reference_id=str(chat_id),
-            customer_creation="always",
-            metadata={"telegram_user_id": str(chat_id)},
-        )
+        payload = {
+            "mode": "subscription",
+            "line_items": [{"price": PRICE_ID, "quantity": 1}],
+            "success_url": f"https://t.me/{BOT_USERNAME}?start=paid",
+            "cancel_url": f"https://t.me/{BOT_USERNAME}?start=cancel",
+            "client_reference_id": str(chat_id),
+            "customer_creation": "always",
+            "metadata": {"telegram_user_id": str(chat_id)},
+        }
+
+        print("[DEBUG] Enviando para Stripe (Checkout Session):")
+        print(payload)
+
+        session = stripe.checkout.Session.create(**payload)
+
+        print("[DEBUG] Resposta do Stripe:")
+        print(session)
+
         return session.url
     except Exception as e:
         import traceback
-        print("[checkout] ERRO criando checkout Stripe:", repr(e), file=sys.stdout)
+        print("[checkout] ERRO criando checkout Stripe:", repr(e))
         traceback.print_exc()
         return None
+
 
 
 def kb_inicio(chat_id: int):
@@ -401,4 +411,5 @@ if __name__ == "__main__":
     port = int(os.environ["PORT"])
     print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
     app.run(host="0.0.0.0", port=port)
+
 
