@@ -492,12 +492,27 @@ def create_checkout_session():
 import sys
 
 # MAIN
+import threading
+import sys
+import os
+
+def start_flask():
+    port = int(os.getenv("PORT", "10000"))
+    print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
+    app.run(host="0.0.0.0", port=port)
+
 if __name__ == "__main__":
+    # Inicia o Flask primeiro, para o Render detectar
+    threading.Thread(target=start_flask, daemon=True).start()
+
     print("[INIT] Iniciando aplicação...", file=sys.stdout)
 
-    print("[DB] Inicializando banco...", file=sys.stdout)
-    db_init()
-    print("[DB] Banco inicializado com sucesso!", file=sys.stdout)
+    try:
+        print("[DB] Inicializando banco...", file=sys.stdout)
+        db_init()
+        print("[DB] Banco inicializado com sucesso!", file=sys.stdout)
+    except Exception as e:
+        print(f"[DB] Erro: {e}", file=sys.stdout)
 
     try:
         print("[BOT] Removendo webhook antigo...", file=sys.stdout)
@@ -514,13 +529,10 @@ if __name__ == "__main__":
     )
     print("[BOT] Novo webhook configurado!", file=sys.stdout)
 
-    print("[THREAD] Iniciando thread de limpeza diária...", file=sys.stdout)
+    print("[THREAD] Iniciando limpeza diária...", file=sys.stdout)
     threading.Thread(target=daily_pruner, daemon=True).start()
-    print("[THREAD] Thread iniciada!", file=sys.stdout)
 
-    print("[FLASK] Iniciando servidor Flask...", file=sys.stdout)
-    port = int(os.getenv("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
+
 
 
 
