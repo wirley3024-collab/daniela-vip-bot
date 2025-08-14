@@ -374,6 +374,75 @@ def daily_pruner():
         except Exception as e:
             print("[PRUNER] error ciclo:", e)
         time.sleep(24 * 3600)
+...
+time.sleep(24 * 3600)
+
+# ======= ROTA WEBHOOK STRIPE =======
+from flask import Flask, request, jsonify
+import stripe
+import os
+
+app = Flask(__name__)
+
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+@app.route("/webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.data
+    sig_header = request.headers.get("Stripe-Signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, WEBHOOK_SECRET
+        )
+    except ValueError:
+        return "Invalid payload", 400
+    except stripe.error.SignatureVerificationError:
+        return "Invalid signature", 400
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        chat_id = session.get("client_reference_id")
+        if chat_id:
+            bot.send_message(
+                chat_id,
+                "✅ Pagamento confirmado! Bem-vindo ao grupo VIP 🎉"
+            )
+            # Aqui você pode adicionar código para colocar o usuário no grupo
+
+       return jsonify(success=True)
+
+@app.route("/create-checkout-session", methods=["POST"])
+def create_checkout_session():
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "brl",
+                    "product_data": {
+                        "name": "Acesso VIP"
+                    },
+                    "unit_amount": 1000  # valor em centavos (R$ 10,00)
+                },
+                "quantity": 1
+            }],
+            mode="payment",
+            success_url="https://SEU_SITE.com/sucesso",
+            cancel_url="https://SEU_SITE.com/cancelado"
+        )
+        return jsonify({"url": checkout_session.url})
+    except Exception as e:
+        return jsonify(error=str(e)), 400
+
+
+# ================================
+# MAIN
+# ================================
+def run_flask():
+    port = int(os.getenv("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
 
 # ===============================
 # MAIN
@@ -398,6 +467,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
 
