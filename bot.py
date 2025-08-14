@@ -5,22 +5,22 @@ import sqlite3
 import threading
 from typing import Optional
 
+import requests
+import stripe
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, request, jsonify
-import stripe
-import requests
 
 # ===============================
 # CONFIG (via variáveis de ambiente)
 # ===============================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))  # ex: -1001234567890
+GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))   # ex: -1001234567890
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 PRICE_ID = os.getenv("PRICE_ID")
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")  # ex: https://seu-app.onrender.com
-BOT_USERNAME = os.getenv("BOT_USERNAME", "TuBot")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")         # ex: https://daniela-vip-bot.onrender.com
+BOT_USERNAME = os.getenv("BOT_USERNAME")               # ex: DanielaVip_OfficialBot
 
 missing = []
 if not TELEGRAM_TOKEN: missing.append("TELEGRAM_TOKEN")
@@ -29,12 +29,16 @@ if not STRIPE_SECRET_KEY: missing.append("STRIPE_SECRET_KEY")
 if not STRIPE_WEBHOOK_SECRET: missing.append("STRIPE_WEBHOOK_SECRET")
 if not PRICE_ID: missing.append("PRICE_ID")
 if not PUBLIC_BASE_URL: missing.append("PUBLIC_BASE_URL")
-
+if not BOT_USERNAME: missing.append("BOT_USERNAME")
 if missing:
     raise RuntimeError(f"Faltam variáveis de ambiente: {', '.join(missing)}")
 
 stripe.api_key = STRIPE_SECRET_KEY
 bot = telebot.TeleBot(TELEGRAM_TOKEN, parse_mode="Markdown")
+app = Flask(__name__)
+
+# endpoint do webhook do Telegram (caminho "secreto")
+TELEGRAM_WEBHOOK_PATH = f"/telegram/{TELEGRAM_TOKEN}"
 
 # ===============================
 # DB (SQLite)
@@ -44,18 +48,16 @@ DB_PATH = "subscriptions.db"
 def db_init():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS subs (
-            telegram_user_id INTEGER PRIMARY KEY,
-            subscription_id TEXT,
-            customer_id TEXT,
-            status TEXT,
-            current_period_end INTEGER,
-            created_at INTEGER
-        )
-        """
-    )
+    c.execute("""
+      CREATE TABLE IF NOT EXISTS subs (
+        telegram_user_id INTEGER PRIMARY KEY,
+        subscription_id TEXT,
+        customer_id TEXT,
+        status TEXT,
+        current_period_end INTEGER,
+        created_at INTEGER
+      )
+    """)
     conn.commit()
     conn.close()
 
@@ -63,18 +65,15 @@ def db_upsert_sub(tg_id: int, sub_id: Optional[str], cust_id: Optional[str],
                   status: str, period_end_epoch: Optional[int]):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute(
-        """
-        INSERT INTO subs (telegram_user_id, subscription_id, customer_id, status, current_period_end, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(telegram_user_id) DO UPDATE SET
-            subscription_id=excluded.subscription_id,
-            customer_id=excluded.customer_id,
-            status=excluded.status,
-            current_period_end=excluded.current_period_end
-        """,
-        (tg_id, sub_id, cust_id, status, int(period_end_epoch or 0), int(time.time()))
-    )
+    c.execute("""
+      INSERT INTO subs (telegram_user_id, subscription_id, customer_id, status, current_period_end, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(telegram_user_id) DO UPDATE SET
+        subscription_id=excluded.subscription_id,
+        customer_id=excluded.customer_id,
+        status=excluded.status,
+        current_period_end=excluded.current_period_end
+    """, (tg_id, sub_id, cust_id, status, int(period_end_epoch or 0), int(time.time())))
     conn.commit()
     conn.close()
 
@@ -84,7 +83,7 @@ def db_find_by_subscription(sub_id: str):
     c.execute("SELECT telegram_user_id, status FROM subs WHERE subscription_id=?", (sub_id,))
     row = c.fetchone()
     conn.close()
-    return row  # (tg_id, status) or None
+    return row
 
 def db_get_all_expired(now_epoch: Optional[int] = None):
     now_epoch = now_epoch or int(time.time())
@@ -106,7 +105,7 @@ def db_set_status_by_sub(sub_id: str, status: str, period_end_epoch: Optional[in
     conn.close()
 
 # ===============================
-# TELEGRAM HTTP helpers
+# TELEGRAM helpers (HTTP)
 # ===============================
 API_BASE = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
@@ -127,10 +126,9 @@ def send_dm(user_id, text, buttons=None):
     return tg_call("sendMessage", data)
 
 def create_one_use_invite() -> Optional[str]:
-    # Link único (1 uso), expira em 24h
+    # link 1-uso com expiração de 24h
     expire = int(time.time()) + 24 * 3600
-    data = {"chat_id": GROUP_CHAT_ID, "expire_date": expire, "member_limit": 1}
-    res = tg_call("createChatInviteLink", data)
+    res = tg_call("createChatInviteLink", {"chat_id": GROUP_CHAT_ID, "expire_date": expire, "member_limit": 1})
     if res.get("ok") and res["result"].get("invite_link"):
         return res["result"]["invite_link"]
     return None
@@ -141,7 +139,7 @@ def kick_from_group(user_id: int):
     tg_call("unbanChatMember", {"chat_id": GROUP_CHAT_ID, "user_id": user_id})
 
 # ===============================
-# UI / Mensagens
+# UI / Textos
 # ===============================
 def kb_inicio():
     kb = InlineKeyboardMarkup()
@@ -169,14 +167,6 @@ MUESTRAS_FOOTER = (
     "¿Te gustaron? 😏\n"
     "Si quieres *más contenido exclusivo* y acceso completo, toca abajo:"
 )
-SABER_MAS = (
-    "🔒 *¿Qué recibes en Daniela Vip?*\n"
-    "• Contenido exclusivo diario (fotos y videos)\n"
-    "• Sorpresas y atención personalizada\n"
-    "• Acceso inmediato tras el pago\n\n"
-    "Pulsa para suscribirte:"
-)
-CTA_FINAL = "Perfecto 😈\nToca el botón para suscribirte ahora:"
 PAGO_OK = "💖 *¡Pago confirmado!* Preparando tu acceso VIP…"
 INVITE_READY = (
     "✨ ¡Listo! Entra con este *enlace único* (24h, 1 uso):\n\n{invite}\n\n"
@@ -198,7 +188,7 @@ PHOTOS = [
 ]
 
 # ===============================
-# BOT handlers
+# BOT handlers (funciona igual em webhook)
 # ===============================
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
@@ -254,33 +244,35 @@ def any_text(message):
         bot.send_message(message.chat.id, FALLBACK, reply_markup=kb_inicio())
 
 # ===============================
-# Flask (Webhook Stripe + Health)
+# FLASK (Telegram Webhook + Stripe Webhook + Health)
 # ===============================
-app = Flask(__name__)
-
 @app.get("/")
 def health():
     return "OK", 200
 
-# AVISO: o Stripe foi configurado para POST em /webhook
+# Telegram → envia updates para este endpoint
+@app.post(TELEGRAM_WEBHOOK_PATH)
+def telegram_webhook():
+    try:
+        update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
+        bot.process_new_updates([update])
+    except Exception as e:
+        print("Erro no telegram_webhook:", e)
+    return "OK", 200
+
+# Stripe → você já cadastrou /webhook na Stripe
 @app.post("/webhook")
 def stripe_webhook():
     payload = request.data
     sig_header = request.headers.get("Stripe-Signature", "")
     try:
-        event = stripe.Webhook.construct_event(
-            payload=payload,
-            sig_header=sig_header,
-            secret=STRIPE_WEBHOOK_SECRET
-        )
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except Exception as e:
-        # assinatura inválida ou payload ruim
         return jsonify({"error": str(e)}), 400
 
     etype = event["type"]
     data = event["data"]["object"]
 
-    # 1) Checkout inicial pago
     if etype == "checkout.session.completed":
         tel_id = int(data.get("client_reference_id") or data.get("metadata", {}).get("telegram_user_id", 0))
         sub_id = data.get("subscription")
@@ -288,10 +280,10 @@ def stripe_webhook():
 
         try:
             sub = stripe.Subscription.retrieve(sub_id) if sub_id else None
-            period_end = sub["current_period_end"] if sub else int(time.time()) + 30 * 24 * 3600
+            period_end = sub["current_period_end"] if sub else int(time.time()) + 30*24*3600
             status = sub["status"] if sub else "active"
         except Exception:
-            period_end = int(time.time()) + 30 * 24 * 3600
+            period_end = int(time.time()) + 30*24*3600
             status = "active"
 
         if tel_id:
@@ -303,19 +295,15 @@ def stripe_webhook():
             else:
                 send_dm(tel_id, "Pago ok, pero no pude generar tu invitación ahora. Escríbeme y lo resuelvo enseguida. 💬")
 
-    # 2) Renovação paga
     elif etype == "invoice.payment_succeeded":
         sub_id = data.get("subscription")
         if sub_id:
             try:
                 sub = stripe.Subscription.retrieve(sub_id)
-                period_end = sub["current_period_end"]
-                status = sub["status"]
-                db_set_status_by_sub(sub_id, status, period_end)
+                db_set_status_by_sub(sub_id, sub["status"], sub["current_period_end"])
             except Exception:
                 db_set_status_by_sub(sub_id, "active")
 
-    # 3) Falha no pagamento
     elif etype == "invoice.payment_failed":
         sub_id = data.get("subscription")
         if sub_id:
@@ -326,7 +314,6 @@ def stripe_webhook():
                 kick_from_group(tel_id)
                 send_dm(tel_id, RENEW_FAIL)
 
-    # 4) Cancelada/atualizada
     elif etype in ["customer.subscription.deleted", "customer.subscription.updated"]:
         sub = data
         sub_id = sub.get("id")
@@ -342,14 +329,13 @@ def stripe_webhook():
     return jsonify({"received": True}), 200
 
 # ===============================
-# Tarefa diária: expulsar expirados (backup)
+# tarefa diária (backup)
 # ===============================
 def daily_pruner():
     while True:
         try:
             now = int(time.time())
-            expirados = db_get_all_expired(now)
-            for uid in expirados:
+            for uid in db_get_all_expired(now):
                 try:
                     kick_from_group(uid)
                     print(f"[PRUNER] expulsado por expiración: {uid}")
@@ -364,23 +350,22 @@ def daily_pruner():
 # ===============================
 def run_flask():
     port = int(os.getenv("PORT", "10000"))
-    # Flask em modo produção simples do Render (sem debug)
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     db_init()
 
-    # MUITO IMPORTANTE: garante que estamos em modo "polling" (sem webhook no Telegram)
+    # Configura o webhook do Telegram (sem polling!)
     try:
-        bot.delete_webhook(drop_pending_updates=True)
-    except Exception as e:
-        print("Aviso ao remover webhook do Telegram:", e)
+        bot.remove_webhook()
+    except Exception:
+        pass
+    bot.set_webhook(
+        url=f"{PUBLIC_BASE_URL}{TELEGRAM_WEBHOOK_PATH}",
+        allowed_updates=telebot.util.update_types,
+        drop_pending_updates=True
+    )
 
-    # Sobe Flask e o pruner em threads
-    threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=daily_pruner, daemon=True).start()
-
-    print("🤖 Daniela Vip Bot executándose…")
-    # inicia polling único (evita 409 quando outro processo estaria pegando updates)
-    bot.infinity_polling(skip_pending=True, allowed_updates=telebot.util.update_types)
+    run_flask()
 
