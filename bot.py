@@ -193,7 +193,7 @@ PHOTOS = [
 # ===============================
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
-    bot.send_message(message.chat.id, INTRO_1, reply_markup=kb_inicio())
+    bot.send_message(message.chat.id, INTRO_1, reply_markup=kb_inicio(message.chat.id))
     bot.send_message(message.chat.id, INTRO_2)
 
 @bot.callback_query_handler(func=lambda c: c.data == "ver_muestras")
@@ -203,42 +203,57 @@ def cb_ver_muestras(call):
     bot.send_message(chat_id, MUESTRAS_HEADER)
     for fid in PHOTOS:
         bot.send_photo(chat_id, fid)
-    bot.send_message(chat_id, MUESTRAS_FOOTER, reply_markup=kb_post_muestras())
+   bot.send_message(chat_id, MUESTRAS_FOOTER, reply_markup=kb_post_muestras(chat_id))
 
-@bot.callback_query_handler(func=lambda c: c.data == "suscribir")
-def cb_suscribir(call):
-    """Cria sessão de checkout Stripe e envia link ao usuário."""
-    bot.answer_callback_query(call.id)
+def kb_inicio(chat_id):
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": PRICE_ID, "quantity": 1}],
             success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
             cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
-            client_reference_id=str(call.from_user.id),
+            client_reference_id=str(chat_id),
             customer_creation="always",
             metadata={
-                "telegram_user_id": str(call.from_user.id),
-                "telegram_username": call.from_user.username or ""
+                "telegram_user_id": str(chat_id)
             }
         )
-        bot.send_message(
-            call.message.chat.id,
-            f"📸 Para completar tu suscripción, haz clic aquí:\n{session.url}\n\n"
-            "Tras el pago, recibirás acceso automáticamente. ✨",
-            disable_web_page_preview=True
-        )
+        checkout_url = session.url
     except Exception as e:
-        # Se falhar, tenta avisar no próprio chat. Se não der, usa ADMIN_CHAT_ID (se definido)
-        target = getattr(call, "message", None)
-        target_chat_id = getattr(target, "chat", None).id if target else (ADMIN_CHAT_ID or None)
-        if target_chat_id:
-            bot.send_message(target_chat_id, f"⚠️ Error creando el pago: {str(e)}")
-        print("[cb_suscribir] erro criando checkout:", e)
+        print("[kb_inicio] erro criando checkout:", e)
+        checkout_url = "https://seu-link-de-falha-aqui.com"
 
-@bot.message_handler(func=lambda m: True)
-def any_text(message):
-    text = (message.text or "").lower()
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🆓 Ver fotos gratis", callback_data="ver_muestras"))
+    kb.add(InlineKeyboardButton("💳 Suscribirme ahora", url=checkout_url))
+    return kb
+
+def kb_post_muestras(chat_id):
+    try:
+        # Cria a sessão de checkout diretamente
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": PRICE_ID, "quantity": 1}],
+            success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
+            cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
+            client_reference_id=str(chat_id),
+            customer_creation="always",
+            metadata={
+                "telegram_user_id": str(chat_id)
+            }
+        )
+
+        checkout_url = session.url
+
+    except Exception as e:
+        print("[kb_post_muestras] erro criando checkout:", e)
+        checkout_url = "https://seu-link-de-falha-aqui.com"
+
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("✅ Quiero suscribirme", url=checkout_url))
+    kb.add(InlineKeyboardButton("🔄 Ver de nuevo", callback_data="ver_muestras"))
+    return kb
+
     if any(w in text for w in ["gratis", "muestra", "fotos", "free", "muestras"]):
         bot.send_message(message.chat.id, MUESTRAS_HEADER)
         for fid in PHOTOS:
@@ -382,6 +397,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
 
