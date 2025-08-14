@@ -411,27 +411,77 @@ def stripe_webhook():
             )
             # Aqui você pode adicionar código para colocar o usuário no grupo
 
-       return jsonify(success=True)
+# Rota para página de sucesso, exibindo link para o canal VIP
+@app.route("/sucesso")
+def pagina_sucesso():
+    return """
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Pagamento Confirmado</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+            background-color: #f7f7f7;
+          }
+          .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            display: inline-block;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
+          }
+          h1 {
+            color: #2ecc71;
+          }
+          a.botao {
+            background-color: #2ecc71;
+            color: white;
+            padding: 15px 25px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 18px;
+            display: inline-block;
+            margin-top: 20px;
+          }
+          a.botao:hover {
+            background-color: #27ae60;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>✅ Pagamento Confirmado!</h1>
+          <p>Bem-vindo ao nosso grupo VIP no Telegram!</p>
+          <a href="https://t.me/+adrsnUuAlTJkNzIx" class="botao">Entrar no Canal VIP</a>
+        </div>
+      </body>
+    </html>
+    """
+
 
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
-                "price_data": {
-                    "currency": "brl",
-                    "product_data": {
-                        "name": "Acesso VIP"
-                    },
-                    "unit_amount": 1000  # valor em centavos (R$ 10,00)
-                },
-                "quantity": 1
-            }],
-            mode="payment",
-            success_url="https://SEU_SITE.com/sucesso",
-            cancel_url="https://SEU_SITE.com/cancelado"
-        )
+checkout_session = stripe.checkout.Session.create(
+    payment_method_types=["card"],
+    line_items=[{
+        "price_data": {
+            "currency": "brl",
+            "product_data": {
+                "name": "Acesso VIP"
+            },
+            "unit_amount": 1000,  # valor em centavos
+        },
+        "quantity": 1
+    }],
+    mode="payment",
+    success_url="https://daniela-vip-bot.onrender.com/sucesso",
+    cancel_url="https://daniela-vip-bot.onrender.com/cancelado"
+)
+
         return jsonify({"url": checkout_session.url})
     except Exception as e:
         return jsonify(error=str(e)), 400
@@ -467,6 +517,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
 
