@@ -177,15 +177,15 @@ PHOTOS = [
 
 def make_checkout_session(chat_id: int) -> str:
     try:
-        payload = {
-            "mode": "subscription",
-            "line_items": [{"price": PRICE_ID, "quantity": 1}],
-            "success_url": f"https://t.me/{BOT_USERNAME}?start=paid",
-            "cancel_url": f"https://t.me/{BOT_USERNAME}?start=cancel",
-            "client_reference_id": str(chat_id),
-            "customer_creation": "always",
-            "metadata": {"telegram_user_id": str(chat_id)},
-        }
+    payload = {
+    "mode": "subscription",
+    "line_items": [{"price": PRICE_ID, "quantity": 1}],
+    "success_url": f"https://t.me/{BOT_USERNAME}?start=paid",
+    "cancel_url": f"https://t.me/{BOT_USERNAME}?start=cancel",
+    "client_reference_id": str(chat_id),
+    "metadata": {"telegram_user_id": str(chat_id)},
+}
+
 
         print("[DEBUG] Enviando para Stripe (Checkout Session):")
         print(payload)
@@ -411,5 +411,6 @@ if __name__ == "__main__":
     port = int(os.environ["PORT"])
     print(f"[FLASK] Rodando na porta {port}", file=sys.stdout)
     app.run(host="0.0.0.0", port=port)
+
 
 
