@@ -488,14 +488,6 @@ def create_checkout_session():
         return jsonify(error=str(e)), 400
 
 
-
-# ================================
-# MAIN
-# ================================
-def run_flask():
-    port = int(os.getenv("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
-
 # ===============================
 # MAIN
 # ===============================
@@ -517,8 +509,13 @@ if __name__ == "__main__":
         drop_pending_updates=True
     )
 
-    threading.Thread(target=daily_pruner, daemon=True).start()
-    run_flask()
+threading.Thread(target=daily_pruner, daemon=True).start()
+
+import threading
+# Inicia Flask em paralelo para abrir a porta no Render
+threading.Thread(target=run_flask).start()
+
+
 
 
 
