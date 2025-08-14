@@ -210,9 +210,9 @@ def kb_inicio(chat_id):
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
-            line_items=[{"price": PRICE_ID, "quantity": 1}],
-            success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
-            cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
+            line_items=[{"price": "price_1RtsdwP098mBpr1rM5a9A9eH", "quantity": 1}],
+            success_url="https://t.me/DanielaVip_OfficialBot?start=paid",
+            cancel_url="https://t.me/DanielaVip_OfficialBot?start=cancel",
             client_reference_id=str(chat_id),
             customer_creation="always",
             metadata={
@@ -222,10 +222,10 @@ def kb_inicio(chat_id):
         checkout_url = session.url
     except Exception as e:
         print("[kb_inicio] erro criando checkout:", e)
-        checkout_url = "https://seu-link-de-falha-aqui.com"
+        checkout_url = "https://t.me/DanielaVip_OfficialBot"
 
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("🆓 Ver fotos gratis", callback_data="ver_muestras"))
+    kb.add(InlineKeyboardButton("📷 Ver fotos gratis", callback_data="ver_muestras"))
     kb.add(InlineKeyboardButton("💳 Suscribirme ahora", url=checkout_url))
     return kb
 
@@ -398,6 +398,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
 
 
