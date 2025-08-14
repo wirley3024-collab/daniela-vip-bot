@@ -207,27 +207,33 @@ def cb_ver_muestras(call):
 @bot.callback_query_handler(func=lambda c: c.data == "suscribir")
 def cb_suscribir(call):
     bot.answer_callback_query(call.id)
-    try:
-        session = stripe.checkout.Session.create(
-            mode="subscription",
-            line_items=[{"price": PRICE_ID, "quantity": 1}],
-            success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
-            cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
-            client_reference_id=str(call.from_user.id),
-            customer_creation="always",
-            metadata={
-                "telegram_user_id": str(call.from_user.id),
-                "telegram_username": call.from_user.username or ""
-            }
-        )
-        bot.send_message(
-            call.message.chat.id,
-            f"Abre este enlace para completar tu suscripción:\n\n{session.url}\n\n"
-            "Tras el pago, te doy acceso automáticamente. ✨",
-            disable_web_page_preview=True
-        )
-    except Exception as e:
-        bot.send_message(call.message.chat.id, f"Error creando el pago: `{e}`")
+try:
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        line_items=[{"price": PRICE_ID, "quantity": 1}],
+        success_url=f"https://t.me/{BOT_USERNAME}?start=paid",
+        cancel_url=f"https://t.me/{BOT_USERNAME}?start=cancel",
+        client_reference_id=str(call.from_user.id),
+        customer_creation="always",
+        metadata={
+            "telegram_user_id": str(call.from_user.id),
+            "telegram_username": call.from_user.username or ""
+        }
+    )
+
+    bot.send_message(
+        call.message.chat.id,
+        f"💳 Para completar tu suscripción, haz clic aquí:\n{session.url}\n\n"
+        "Tras el pago, recibirás acceso automáticamente. ✨"
+        disable_web_page_preview=True
+    )
+
+except Exception as e:
+    bot.send_message(
+        call.message.chat.id,
+        f"⚠️ Error creando el pago: {str(e)}"
+    )
+
 
 @bot.message_handler(func=lambda m: True)
 def any_text(message):
@@ -368,4 +374,5 @@ if __name__ == "__main__":
 
     threading.Thread(target=daily_pruner, daemon=True).start()
     run_flask()
+
 
